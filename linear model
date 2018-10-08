@@ -1,0 +1,236 @@
+from IPython.display import display
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+
+# !pip install mglearn
+import mglearn
+
+##################################################
+
+###1.데이터 수집&확인
+taxi_train=pd.read_csv('C:/taxi_train.csv',nrows=2000000)
+
+"""
+
+Topic of data handling 
+
+1. fare_amount.min() : minus value --> drop fare_amount is -(value) 
+2. Remove data having Null value 
+3. Remove data having 'passenger_count' value is 0
+4. Minimum longitude/lattitude coordinates are way off --> remove them
+5 .Average fare_amount is about $11.4 with a standard deviation of $9.853 
+6 .building a predictive model better than $9.853 
+
+"""
+
+taxi_train.describe()
+
+##################################################
+
+taxi_train.dtypes
+
+#################################################
+
+taxi_test.describe() 
+
+#################################################
+
+taxi_test.dtypes
+
+#################################################
+
+print(taxi_train.isnull().sum())
+print(taxi_test.isnull().sum()) 
+
+#################################################
+
+#1.fare_amount<0제외
+
+print("old : {}".format(len(taxi_train)))# 2000000
+
+taxi_train=taxi_train[-(taxi_train['fare_amount']<0)]
+print("new : {}".format(len(taxi_train))) # 1999923
+
+#################################################
+
+#2.null값 제외
+
+print("old : {}".format(len(taxi_train)))# 2000000
+
+taxi_train=taxi_train[-(taxi_train['dropoff_longitude'].isnull())&-(taxi_train['dropoff_latitude'].isnull())]
+print("new : {}".format(len(taxi_train))) # 1999909
+
+#################################################
+
+#3. Remove data having 'passenger_count' value is 0
+
+print("old : {}".format(len(taxi_train))) # 1999909
+
+taxi_train=taxi_train[taxi_train.passenger_count!=0]
+print("new : {}".format(len(taxi_train))) # 1992800
+
+#################################################
+
+#4.Minimum longitude/lattitude coordinates are way off --> remove them
+
+"""
+Add two new features 'abs_diff_longitude' and 'abs_diff_latitude' representing the 'Manhattan vector'
+from the pickup location to dropoff location
+"""
+
+taxi_train['abs_diff_longitude']=abs(taxi_train['dropoff_longitude']-taxi_train['pickup_longitude'])  
+
+taxi_train['abs_diff_latitude']=abs(taxi_train['dropoff_latitude']-taxi_train['pickup_latitude'])  
+
+taxi_train.describe() 
+
+#################################################
+
+# one degree of latitude is about 69 miles. 
+# Based on the scatterplot, safely exclude values above 5
+
+taxi_train=taxi_train[(taxi_train['abs_diff_longitude']<=5)&(taxi_train['abs_diff_latitude']<=5)]
+taxi_train.describe() 
+  
+#################################################  
+ 
+print("new : {}".format(len(taxi_train)))        
+
+#################################################  
+ 
+# Remove (abs_diff_longitude = 0) and (abs_diff_latitude = 0) #
+
+taxi_train=taxi_train[(taxi_train.abs_diff_longitude!=0)&(taxi_train.abs_diff_latitude!=0)]
+
+print("new : {}".format(len(taxi_train)))
+
+################################################# 
+
+## Visualization ##
+
+#시계열 taxi_test = pd.read_csv("C:/taxi_test.csv",parse_dates=["pickup_datetime"]) 
+taxi_test.describe()
+
+taxi_test.isnull().sum().to_frame() # no missing value 
+
+#################################################  
+
+#test set 점검
+taxi_test['abs_diff_longitude']=abs(taxi_test['dropoff_longitude']-taxi_test['pickup_longitude'])  
+taxi_test['abs_diff_latitude']=abs(taxi_test['dropoff_latitude']-taxi_test['pickup_latitude'])  
+
+taxi_test = taxi_test[-((taxi_test.abs_diff_longitude == 0) & (taxi_test.abs_diff_latitude == 0))]
+
+#################################################  
+
+taxi_test = taxi_test[(taxi_test.abs_diff_longitude < 5.0) & (taxi_test.abs_diff_latitude < 5.0)]
+
+#################################################  
+
+taxi_test.describe() 
+
+#################################################  
+
+#Linear Model
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+
+trainx=taxi_train.iloc[:,[8,9]]
+trainy=taxi_train.iloc[:,1:2]
+X_test=taxi_test.iloc[:,[7,8]]
+
+#################################################  
+
+trainx.head() 
+#################################################  
+
+trainy.head()
+#################################################  
+
+X_test.head() 
+#################################################  
+
+from sklearn.preprocessing import MinMaxScaler
+scaler = MinMaxScaler()
+scaler.fit(trainx) 
+scaler.transform(trainx) 
+
+#################################################  
+#1.OLS
+lr = LinearRegression().fit(trainx,trainy) 
+
+print("lr_coef : {}".format(lr.coef_))
+print()
+
+
+print("lr_intercept : {}".format(lr.intercept_))
+print("train score : {}".format(lr.score(trainx,trainy)))
+print() 
+
+#################################################  
+
+#2.Ridge
+from sklearn.linear_model import Ridge
+ridge = Ridge().fit(trainx,trainy) # default value of alpha = 1.0
+
+print("trainset score : {}".format(ridge.score(trainx,trainy)))
+
+#################################################  
+
+
+## Alpha 매개 변수를 어떻게 설정해야 가장 좋은 성능을 가진 모델을 가질 수 있을까? ##
+
+# 간단한 Grid Search 방법 : for() #
+
+train_accuracy = []
+
+for alpha in np.arange(0,30,0.05):
+    # generate model
+    ridge = Ridge(alpha = alpha).fit(trainx,trainy)
+    # append accuracy of trainset
+    train_accuracy.append(ridge.score(trainx,trainy))
+    
+#################################################  
+
+plt.plot(np.arange(0,30,0.05),train_accuracy,label = "train accuracy")
+plt.ylabel("accuracy")
+plt.xlabel("alpha")
+plt.legend()
+
+#################################################  
+
+train_accuracy = pd.DataFrame({'accuracy':train_accuracy,'index' : np.arange(0,30,0.05)})
+train_accuracy
+
+#################################################  
+
+train_accuracy.max()  
+
+#################################################  
+
+#3.Lasso
+from sklearn.linear_model import Lasso
+
+lasso = Lasso().fit(trainx,trainy) # In Lasso default value of alpha is 1 
+print("train set score : {}".format(lasso.score(trainx,trainy)))
+print("feature number : {}".format(np.sum(lasso.coef_ !=0)))
+
+#################################################  
+
+
+## 과소적합 방지를 위해 alpha값을 줄인다. ##
+
+# 1. max_iter(반복 실행하는 최대 횟수)의 기본값을 늘린다. #
+
+lasso001 = Lasso(alpha = 0.01,max_iter = 100000).fit(trainx,trainy)
+print("train set score : {}".format(lasso001.score(trainx,trainy)))
+print("feature number : {}".format(np.sum(lasso001.coef_ !=0))) # 2
+
+# Alpha값을 너무 낮추면 규제 효과가 사라져 과대적합이 되므로 OLS 방식과 비슷해 진다. #
+
+lasso00001 = Lasso(alpha = 0.0001,max_iter = 100000).fit(trainx,trainy)
+print("train set score : {}".format(lasso00001.score(trainx,trainy)))
+print("feature number : {}".format(np.sum(lasso00001.coef_ !=0))) # 2 
+
+
